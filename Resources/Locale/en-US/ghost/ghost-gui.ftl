@@ -36,3 +36,8 @@ ghost-roles-window-rules-footer = The button will enable after {$time} seconds (
 
 ghost-return-to-body-title = Return to Body
 ghost-return-to-body-text = You are being revived! Return to your body?
+
+ghost-return-to-brain-title = Return to Brain
+ghost-return-to-brain-text = You are being inserted into a Man-Machine Interface! Return to your brain?
+ghost-return-to-brain-accept-button = Yes
+ghost-return-to-brain-deny-button = No

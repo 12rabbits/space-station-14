@@ -1,9 +1,13 @@
-﻿using Content.Server.Roles;
+﻿using Content.Server.EUI;
+using Content.Server.Ghost;
+using Content.Server.Roles;
 using Content.Shared.Containers.ItemSlots;
+using Content.Shared.Mind;
 using Content.Shared.Mind.Components;
 using Content.Shared.Roles;
 using Content.Shared.Silicons.Borgs.Components;
 using Robust.Shared.Containers;
+using Robust.Shared.Player;
 
 namespace Content.Server.Silicons.Borgs;
 
@@ -11,7 +15,10 @@ namespace Content.Server.Silicons.Borgs;
 public sealed partial class BorgSystem
 {
 
+    [Dependency] private readonly EuiManager _euiManager = default!;
     [Dependency] private readonly SharedRoleSystem _roles = default!;
+
+    private readonly Dictionary<ICommonSession, ReturnToBrainEui> _openEuis = new();
 
     public void InitializeMMI()
     {
@@ -47,10 +54,18 @@ public sealed partial class BorgSystem
 
         if (_mind.TryGetMind(ent, out var mindId, out var mind))
         {
-            _mind.TransferTo(mindId, uid, true, mind: mind);
+            // send return prompt first if player is logged in & ghosted
+            if (mind.Session is { } session && mind.CurrentEntity != ent)
+            {
+                OpenEui(session, ent);
+            }
+            else
+            {
+                _mind.TransferTo(mindId, uid, true, mind: mind);
 
-            if (!_roles.MindHasRole<SiliconBrainRoleComponent>(mindId))
-                _roles.MindAddRole(mindId, "MindRoleSiliconBrain", silent: true);
+                if (!_roles.MindHasRole<SiliconBrainRoleComponent>(mindId))
+                    _roles.MindAddRole(mindId, "MindRoleSiliconBrain", silent: true);
+            }
         }
 
         _appearance.SetData(uid, MMIVisuals.BrainPresent, true);
@@ -82,6 +97,12 @@ public sealed partial class BorgSystem
 
         if (component.LinkedMMI is not { } linked)
             return;
+
+        // Close the return prompt if the mind is still in the brain
+        if (_mind.TryGetMind(uid, out var brainId, out var brainMind) && brainMind.Session is { } session)
+        {
+            CloseEui(session);
+        }
         RemComp(uid, component);
 
         if (_mind.TryGetMind(linked, out var mindId, out var mind))
@@ -93,5 +114,35 @@ public sealed partial class BorgSystem
         }
 
         _appearance.SetData(linked, MMIVisuals.BrainPresent, false);
+    }
+
+    internal void TransferMindToMMI(EntityUid ent)
+    {
+        if (!TryComp<MMILinkedComponent>(ent, out var linked) || !_mind.TryGetMind(ent, out var mindId, out var mind))
+            return;
+
+
+        _mind.TransferTo(mindId, linked.LinkedMMI, true, mind: mind);
+
+        if (!_roles.MindHasRole<SiliconBrainRoleComponent>(mindId))
+            _roles.MindAddRole(mindId, "MindRoleSiliconBrain", silent: true);
+    }
+
+    public void OpenEui(ICommonSession session, EntityUid owner)
+    {
+        if (_openEuis.ContainsKey(session))
+            return;
+        var eui = new ReturnToBrainEui(owner, this);
+        _euiManager.OpenEui(eui, session);
+        _openEuis.Add(session, eui);
+    }
+
+    public void CloseEui(ICommonSession session)
+    {
+        if (!_openEuis.TryGetValue(session, out var eui))
+            return;
+
+        _openEuis.Remove(session);
+        eui.Close();
     }
 }
